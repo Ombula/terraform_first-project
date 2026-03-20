@@ -2,6 +2,7 @@ provider "aws" {
   region = "us-east-1"
 }
 
+
 resource "aws_launch_template" "example" {
   image_id               = "ami-0ec10929233384c7f"
   instance_type          = var.instance_type
@@ -146,3 +147,13 @@ output "public_ip" {
   value       = aws_lb.example.dns_name
   description = "The domain name of the load balancer"
 }
+
+resource "aws_instance" "my_server" {
+  ami           = "ami-0ec10929233384c7f"
+  instance_type = "t3.micro"
+
+  tags = {
+    Name = "terraform_example"
+  }
+}
+
