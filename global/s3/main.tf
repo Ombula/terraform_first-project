@@ -6,6 +6,7 @@ resource "aws_s3_bucket" "terraform_state" {
   bucket = "ombula-terraform-state-2026-fresh-001"
 }
 
+#Enable versioning so you can see the full revision history of your state files
 resource "aws_s3_bucket_versioning" "enabled" {
   bucket = aws_s3_bucket.terraform_state.id
   versioning_configuration {
@@ -13,6 +14,25 @@ resource "aws_s3_bucket_versioning" "enabled" {
   }
 }
 
+#Enable server-side encryption by default
+resource "aws_s3_bucket_server_side_encryption_configuration" "default" {
+  bucket = aws_s3_bucket.terraform_state.id
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
+}
+
+#Explicitly block all public access to the s3 bucket
+resource "aws_s3_bucket_public_access_block" "public_accesss" {
+  bucket                  = aws_s3_bucket.terraform_state.id
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+
+}
 resource "aws_dynamodb_table" "terraform_locks" {
   name         = "terraform-fresh-locks"
   billing_mode = "PAY_PER_REQUEST"

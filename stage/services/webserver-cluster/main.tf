@@ -4,12 +4,13 @@ provider "aws" {
 
 terraform {
   backend "s3" {
-    bucket = "ombula-terraform-state-2026-fresh-001"
-    # key    = "stage/services/webserver-cluster/terraform.tfstate"
+    bucket       = "ombula-terraform-state-2026-fresh-001"
     key          = "stage/data-stores/mysql/terraform.tfstate"
     region       = "us-east-1"
     use_lockfile = true
     encrypt      = true
+
+    dynamodb_table = "terraform-fresh-locks"
 
   }
 }
@@ -20,7 +21,6 @@ data "terraform_remote_state" "db" {
   config = {
     bucket = "ombula-terraform-state-2026-fresh-001"
     key    = "stage/data-stores/mysql/terraform.tfstate"
-    # key    = "stage/services/webserver-cluster/terraform.tfstate"
     region = "us-east-1"
   }
 }
@@ -86,8 +86,7 @@ resource "aws_launch_template" "example" {
   #   server_port = var.server_port
   #   db_address  = data.terraform_remote_state.db.outputs.address
   #   db_port     = data.terraform_remote_state.db.outputs.port
-  #   })
-  # )
+  #   }))
 
   user_data = base64encode(<<-EOF
   #!/bin/bash
