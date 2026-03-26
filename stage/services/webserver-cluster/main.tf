@@ -1,3 +1,5 @@
+
+
 provider "aws" {
   region = "us-east-1"
 }
@@ -5,7 +7,7 @@ provider "aws" {
 terraform {
   backend "s3" {
     bucket       = "ombula-terraform-state-2026-fresh-001"
-    key          = "stage/data-stores/mysql/terraform.tfstate"
+    key          = "stage/services/webserver-cluster/terraform.tfstate"
     region       = "us-east-1"
     use_lockfile = true
     encrypt      = true
@@ -15,181 +17,224 @@ terraform {
   }
 }
 
-data "terraform_remote_state" "db" {
-  backend = "s3"
 
-  config = {
-    bucket = "ombula-terraform-state-2026-fresh-001"
-    key    = "stage/data-stores/mysql/terraform.tfstate"
-    region = "us-east-1"
-  }
+module "webserver_cluster" {
+  source = "../../../modules/services/webserver-cluster"
+
+  cluster_name = "webservers-stage"
+  db_remote_state_bucket = "ombula-terraform-state-2026-fresh-001"
+  db_remote_state_key    = "stage/data-stores/mysql/terraform.tfstate"
+
+  instance_type = "t3.micro"
+  min_size      = 2
+  max_size      = 2
+
 }
 
-data "aws_vpc" "default" {
-  default = true
+resource "aws_security_group_rule" "allow_testing_inbound" {
+  type              = "ingress"
+  security_group_id = module.webserver_cluster.alb_security_group_id
+
+  from_port   = 12345
+  to_port     = 12345
+  protocol    = "tcp"
+  cidr_blocks = ["0.0.0.0/0"]
 }
 
-data "aws_subnets" "default" {
-  filter {
-    name   = "vpc-id"
-    values = [data.aws_vpc.default.id]
-  }
-}
 
 
-resource "aws_security_group" "instance" {
-  name = "terraform-example-instance"
 
-  ingress {
-    from_port   = var.server_port
-    to_port     = var.server_port
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
 
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-}
 
-resource "aws_security_group" "alb" {
-  name = "terraform-example-alb-v2"
 
-  ingress {
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
+# terraform {
+#   backend "s3" {
+#     bucket       = "ombula-terraform-state-2026-fresh-001"
+#     key          = "stage/data-stores/mysql/terraform.tfstate"
+#     region       = "us-east-1"
+#     use_lockfile = true
+#     encrypt      = true
 
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-}
+#     dynamodb_table = "terraform-fresh-locks"
 
-# ---------------------------
-# Launch Template
-# ---------------------------
-resource "aws_launch_template" "example" {
-  image_id      = "ami-0ec10929233384c7f"
-  instance_type = var.instance_type
+#   }
+# }
 
-  vpc_security_group_ids = [aws_security_group.instance.id]
+# data "terraform_remote_state" "db" {
+#   backend = "s3"
 
-  # user_data = base64encode(templatefile("${path.module}/user-data.sh", {
-  #   server_port = var.server_port
-  #   db_address  = data.terraform_remote_state.db.outputs.address
-  #   db_port     = data.terraform_remote_state.db.outputs.port
-  #   }))
+#   config = {
+#     bucket = "ombula-terraform-state-2026-fresh-001"
+#     key    = "stage/data-stores/mysql/terraform.tfstate"
+#     region = "us-east-1"
+#   }
+# }
 
-  user_data = base64encode(<<-EOF
-  #!/bin/bash
-  echo "Hello, World Task 4" > index.html
-  nohup busybox httpd -f -p ${var.server_port} &
-  EOF
-  )
+# data "aws_vpc" "default" {
+#   default = true
+# }
 
-  lifecycle {
-    create_before_destroy = true
-  }
-  # depends_on = [aws_security_group.instance]
-}
+# data "aws_subnets" "default" {
+#   filter {
+#     name   = "vpc-id"
+#     values = [data.aws_vpc.default.id]
+#   }
+# }
 
-# ---------------------------
-# Target Group
-# ---------------------------
-resource "aws_lb_target_group" "asg" {
-  name_prefix = "asg-"
-  port        = var.server_port
-  protocol    = "HTTP"
-  vpc_id      = data.aws_vpc.default.id
 
-  health_check {
-    path                = "/"
-    protocol            = "HTTP"
-    matcher             = "200"
-    interval            = 15
-    timeout             = 3
-    healthy_threshold   = 2
-    unhealthy_threshold = 2
-  }
-}
+# resource "aws_security_group" "instance" {
+#   name = "terraform-example-instance"
 
-# ---------------------------
-# Load Balancer
-# ---------------------------
-resource "aws_lb" "example" {
-  name               = "terraform-asg-example"
-  load_balancer_type = "application"
-  subnets            = data.aws_subnets.default.ids
-  security_groups    = [aws_security_group.alb.id]
-}
+#   ingress {
+#     from_port   = var.server_port
+#     to_port     = var.server_port
+#     protocol    = "tcp"
+#     cidr_blocks = ["0.0.0.0/0"]
+#   }
 
-# ---------------------------
-# Listener
-# ---------------------------
-resource "aws_lb_listener" "http" {
-  load_balancer_arn = aws_lb.example.arn
-  port              = 80
-  protocol          = "HTTP"
+#   egress {
+#     from_port   = 0
+#     to_port     = 0
+#     protocol    = "-1"
+#     cidr_blocks = ["0.0.0.0/0"]
+#   }
+# }
 
-  default_action {
-    type = "fixed-response"
+# resource "aws_security_group" "alb" {
+#   name = "terraform-example-alb-v2"
 
-    fixed_response {
-      content_type = "text/plain"
-      message_body = "404 Page not found"
-      status_code  = 404
-    }
-  }
-}
+#   ingress {
+#     from_port   = 80
+#     to_port     = 80
+#     protocol    = "tcp"
+#     cidr_blocks = ["0.0.0.0/0"]
+#   }
 
-# ---------------------------
-# Listener Rule
-# ---------------------------
-resource "aws_lb_listener_rule" "asg" {
-  listener_arn = aws_lb_listener.http.arn
-  priority     = 100
+#   egress {
+#     from_port   = 0
+#     to_port     = 0
+#     protocol    = "-1"
+#     cidr_blocks = ["0.0.0.0/0"]
+#   }
+# }
 
-  condition {
-    path_pattern {
-      values = ["/*"]
-    }
-  }
+# # ---------------------------
+# # Launch Template
+# # ---------------------------
+# resource "aws_launch_template" "example" {
+#   image_id      = "ami-0ec10929233384c7f"
+#   instance_type = var.instance_type
 
-  action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.asg.arn
-  }
-}
+#   vpc_security_group_ids = [aws_security_group.instance.id]
 
-# ---------------------------
-# Auto Scaling Group
-# ---------------------------
-resource "aws_autoscaling_group" "example" {
-  launch_template {
-    id      = aws_launch_template.example.id
-    version = "$Latest"
-  }
+#   # user_data = base64encode(templatefile("${path.module}/user-data.sh", {
+#   #   server_port = var.server_port
+#   #   db_address  = data.terraform_remote_state.db.outputs.address
+#   #   db_port     = data.terraform_remote_state.db.outputs.port
+#   #   }))
 
-  vpc_zone_identifier = data.aws_subnets.default.ids
+#   user_data = base64encode(<<-EOF
+#   #!/bin/bash
+#   echo "Hello, World Task 4" > index.html
+#   nohup busybox httpd -f -p ${var.server_port} &
+#   EOF
+#   )
 
-  target_group_arns = [aws_lb_target_group.asg.arn]
-  health_check_type = "ELB"
+#   lifecycle {
+#     create_before_destroy = true
+#   }
+#   # depends_on = [aws_security_group.instance]
+# }
 
-  min_size = 2
-  max_size = 4
+# # ---------------------------
+# # Target Group
+# # ---------------------------
+# resource "aws_lb_target_group" "asg" {
+#   name_prefix = "asg-"
+#   port        = var.server_port
+#   protocol    = "HTTP"
+#   vpc_id      = data.aws_vpc.default.id
 
-  tag {
-    key                 = "Name"
-    value               = "terraform-asg-example"
-    propagate_at_launch = true
-  }
-}
+#   health_check {
+#     path                = "/"
+#     protocol            = "HTTP"
+#     matcher             = "200"
+#     interval            = 15
+#     timeout             = 3
+#     healthy_threshold   = 2
+#     unhealthy_threshold = 2
+#   }
+# }
+
+# # ---------------------------
+# # Load Balancer
+# # ---------------------------
+# resource "aws_lb" "example" {
+#   name               = "terraform-asg-example"
+#   load_balancer_type = "application"
+#   subnets            = data.aws_subnets.default.ids
+#   security_groups    = [aws_security_group.alb.id]
+# }
+
+# # ---------------------------
+# # Listener
+# # ---------------------------
+# resource "aws_lb_listener" "http" {
+#   load_balancer_arn = aws_lb.example.arn
+#   port              = 80
+#   protocol          = "HTTP"
+
+#   default_action {
+#     type = "fixed-response"
+
+#     fixed_response {
+#       content_type = "text/plain"
+#       message_body = "404 Page not found"
+#       status_code  = 404
+#     }
+#   }
+# }
+
+# # ---------------------------
+# # Listener Rule
+# # ---------------------------
+# resource "aws_lb_listener_rule" "asg" {
+#   listener_arn = aws_lb_listener.http.arn
+#   priority     = 100
+
+#   condition {
+#     path_pattern {
+#       values = ["/*"]
+#     }
+#   }
+
+#   action {
+#     type             = "forward"
+#     target_group_arn = aws_lb_target_group.asg.arn
+#   }
+# }
+
+# # ---------------------------
+# # Auto Scaling Group
+# # ---------------------------
+# resource "aws_autoscaling_group" "example" {
+#   launch_template {
+#     id      = aws_launch_template.example.id
+#     version = "$Latest"
+#   }
+
+#   vpc_zone_identifier = data.aws_subnets.default.ids
+
+#   target_group_arns = [aws_lb_target_group.asg.arn]
+#   health_check_type = "ELB"
+
+#   min_size = 2
+#   max_size = 4
+
+#   tag {
+#     key                 = "Name"
+#     value               = "terraform-asg-example"
+#     propagate_at_launch = true
+#   }
+# }
 
